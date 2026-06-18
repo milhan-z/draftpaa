@@ -4,371 +4,460 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ReelPath — Critical-Path Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0b0d12;
-    --bg-2: #11141c;
-    --panel: #171b26;
-    --panel-2: #1d2230;
-    --border: #2a3040;
-    --text: #e6e9f0;
-    --muted: #8b93a7;
-    --crit: #f5a623;        /* critical = amber/gold */
-    --crit-soft: #f5a62333;
-    --normal: #3b82f6;      /* non-critical / Algorithm A blue */
-    --algo-b: #dc2626;      /* Algorithm B red */
-    --ok: #34d399;
-    --bad: #f87171;
-    --shadow: 0 10px 30px rgba(0,0,0,.45);
+    --bg:#141311; --panel-bg:#1b1917; --card-bg:#221f1c;
+    --text:#f5f4f2; --sub-text:#a39d97;
+    --border:#2e2b27;
+    --warm:#ff6a52; --warm-soft:#2c1713; --warm-border:#6e2f24;
+    --edge:#453f3a; --bar-muted:#403a34;
+    --grid-line:#272420; --hatch:rgba(168,162,158,.3);
+    --chip-bg:#2a2723;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: radial-gradient(1200px 600px at 80% -10%, #1b2030 0%, var(--bg) 60%);
-    color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
-    min-height: 100vh;
+  body.light {
+    --bg:#f3f2ef; --panel-bg:#ffffff; --card-bg:#ffffff;
+    --text:#1c1917; --sub-text:#79716b;
+    --border:#e7e5e1;
+    --warm:#e74b35; --warm-soft:#fdece9; --warm-border:#f1b4a9;
+    --edge:#d6d3ce; --bar-muted:#cfccc6;
+    --grid-line:#eeece8; --hatch:rgba(120,113,108,.32);
+    --chip-bg:#f1efec;
   }
-  header {
-    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-    padding: 22px 30px; border-bottom: 1px solid var(--border);
-    background: linear-gradient(90deg, rgba(245,166,35,.10), rgba(59,130,246,.06));
-  }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .logo {
-    width: 42px; height: 42px; border-radius: 11px;
-    background: linear-gradient(135deg, var(--crit), #ff7b54);
-    display: grid; place-items: center; font-size: 22px; box-shadow: var(--shadow);
-  }
-  .brand h1 { margin: 0; font-size: 22px; letter-spacing: .3px; }
-  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-  .spacer { flex: 1; }
-  .makespan-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-    padding: 12px 22px; text-align: center; box-shadow: var(--shadow);
-  }
-  .makespan-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-  .makespan-card .value { font-size: 34px; font-weight: 700; color: var(--crit); font-variant-numeric: tabular-nums; }
-  .makespan-card .unit { font-size: 14px; color: var(--muted); font-weight: 400; }
-  .badge {
-    display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px;
-    font-size: 13px; font-weight: 600; border: 1px solid var(--border); background: var(--panel);
-  }
-  .badge .dot { width: 9px; height: 9px; border-radius: 50%; }
-  .badge.ok .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
-  .badge.bad .dot { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  *{box-sizing:border-box}
+  body{margin:0}
+  input[type=range]{cursor:pointer;height:18px}
+  button:focus-visible,input:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+  button{font-family:inherit}
 
-  main { display: grid; grid-template-columns: 340px 1fr; gap: 20px; padding: 22px 30px; align-items: start; }
-  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-    padding: 18px; box-shadow: var(--shadow);
-  }
-  .card h2 { margin: 0 0 4px; font-size: 15px; }
-  .card .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
-
-  .controls { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
-  .slider-row { padding: 9px 0; border-bottom: 1px dashed var(--border); }
-  .slider-row:last-child { border-bottom: none; }
-  .slider-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .slider-name { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
-  .pill { font-size: 10px; padding: 2px 7px; border-radius: 999px; font-weight: 700; letter-spacing: .4px; }
-  .pill.crit { background: var(--crit-soft); color: var(--crit); border: 1px solid var(--crit); }
-  .pill.slack { background: #3b82f622; color: #93b4fb; border: 1px solid #3b82f655; }
-  .slider-val { font-variant-numeric: tabular-nums; color: var(--crit); font-weight: 700; font-size: 14px; }
-  input[type=range] { width: 100%; margin: 8px 0 2px; accent-color: var(--crit); cursor: pointer; }
-  .slack-note { font-size: 11.5px; color: var(--muted); }
-
-  .viz { display: flex; flex-direction: column; gap: 20px; }
-  .dag-wrap { overflow-x: auto; border-radius: 10px; }
-  svg { display: block; }
-  .node-label { font: 600 12px "Segoe UI", sans-serif; fill: var(--text); }
-  .node-dur { font: 11px "Segoe UI", sans-serif; fill: var(--muted); }
-  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; color: var(--muted); font-size: 12.5px; }
-  .legend span { display: inline-flex; align-items: center; gap: 7px; }
-  .swatch { width: 14px; height: 14px; border-radius: 4px; }
-
-  .gantt-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
-  .gantt-label { width: 120px; font-size: 12.5px; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .gantt-track { position: relative; flex: 1; height: 22px; background: var(--bg-2); border-radius: 6px; }
-  .gantt-bar { position: absolute; top: 3px; height: 16px; border-radius: 5px; }
-  .gantt-bar.crit { background: linear-gradient(90deg, var(--crit), #ffce6e); }
-  .gantt-bar.normal { background: linear-gradient(90deg, var(--normal), #6ea8fe); }
-  .gantt-slack { position: absolute; top: 3px; height: 16px; border-radius: 5px; background: repeating-linear-gradient(45deg, #ffffff14, #ffffff14 4px, transparent 4px, transparent 8px); border: 1px dashed var(--border); }
-  .gantt-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin: 8px 0 0 130px; }
-
-  footer {
-    margin: 10px 30px 30px; padding: 16px 22px; border-radius: 14px;
-    background: linear-gradient(90deg, rgba(59,130,246,.08), rgba(245,166,35,.08));
-    border: 1px solid var(--border); display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
-    font-size: 13.5px;
-  }
-  footer .verify { font-weight: 700; display: flex; align-items: center; gap: 8px; }
-  footer .metric { color: var(--muted); }
-  footer .metric b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .algo-a { color: var(--normal); }
-  .algo-b { color: var(--algo-b); }
-  .err { color: var(--bad); font-weight: 600; }
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 </style>
 </head>
 <body>
-<header>
-  <div class="brand">
-    <div class="logo">🎬</div>
-    <div>
-      <h1>ReelPath</h1>
-      <p>Critical-path analyzer for video production schedules</p>
-    </div>
-  </div>
-  <div class="spacer"></div>
-  <div class="makespan-card">
-    <div class="label">Makespan</div>
-    <div><span class="value" id="makespan">—</span> <span class="unit">days</span></div>
-  </div>
-  <div class="badge ok" id="crosscheck"><span class="dot"></span><span id="crosscheck-text">verifying…</span></div>
-</header>
 
-<main>
-  <section class="card controls">
-    <h2>What-if · task durations</h2>
-    <p class="hint">Drag a slider — the critical path, Gantt, and makespan recompute live from the real backend.</p>
-    <div id="sliders"></div>
-  </section>
+<div style="height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:'Hanken Grotesk',system-ui,-apple-system,sans-serif;overflow:hidden;">
 
-  <section class="viz">
-    <div class="card">
-      <h2>Production DAG · critical path highlighted</h2>
-      <p class="hint">Tasks flow left→right by dependency depth. <b style="color:var(--crit)">Amber</b> = on the critical path (zero slack).</p>
-      <div class="dag-wrap"><svg id="dag" width="100" height="100"></svg></div>
-      <div class="legend">
-        <span><span class="swatch" style="background:var(--crit)"></span> Critical task</span>
-        <span><span class="swatch" style="background:var(--normal)"></span> Has slack</span>
-        <span><span class="swatch" style="background:var(--crit)"></span> Critical edge</span>
+  <!-- ═══ TOP BAR ═══ -->
+  <div style="display:flex;align-items:center;gap:22px;padding:13px 22px;border-bottom:1px solid var(--border);background:var(--panel-bg);flex:none;">
+
+    <!-- Logo + Brand -->
+    <div style="display:flex;align-items:center;gap:11px;">
+      <div style="width:27px;height:27px;border-radius:7px;background:var(--warm);display:flex;align-items:center;justify-content:center;">
+        <div style="width:9px;height:9px;border-radius:2px;background:#fff;transform:rotate(45deg);"></div>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:700;letter-spacing:-.015em;">ReelPath</div>
+        <div style="font-size:11px;color:var(--sub-text);margin-top:1px;">Critical-path analyzer</div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Gantt · earliest schedule &amp; slack</h2>
-      <p class="hint">Solid bar = earliest start→finish. Hatched extension = available slack before it delays release.</p>
-      <div id="gantt"></div>
-      <div class="gantt-axis"><span>0</span><span id="axis-mid">—</span><span id="axis-end">—</span></div>
+    <!-- Earliest finish -->
+    <div style="margin-left:6px;padding-left:20px;border-left:1px solid var(--border);display:flex;align-items:baseline;gap:9px;">
+      <span style="font-size:12px;color:var(--sub-text);">Earliest finish</span>
+      <span id="makespan" style="font-family:'JetBrains Mono',monospace;font-size:27px;font-weight:600;color:var(--warm);line-height:1;letter-spacing:-.02em;">—</span>
+      <span style="font-size:13px;color:var(--sub-text);">days</span>
     </div>
-  </section>
-</main>
 
-<footer>
-  <span class="verify" id="verify-line">🔒 Makespan verified by 2 independent algorithms</span>
-  <span class="metric">Algorithm A <span class="algo-a">topo-sort + DAG longest path</span>: <b id="a-ms">—</b> ms</span>
-  <span class="metric">Algorithm B <span class="algo-b">Bellman–Ford</span>: <b id="b-ms">—</b> ms</span>
-  <span class="metric">cross-check: <b id="cross-foot">—</b></span>
-</footer>
+    <div style="flex:1;"></div>
+
+    <!-- View / What-if toggle -->
+    <div style="display:flex;background:var(--chip-bg);border:1px solid var(--border);border-radius:9px;padding:3px;">
+      <button id="btn-view" onclick="setMode('view')" style="border:none;cursor:pointer;font-size:13px;font-weight:600;padding:6px 17px;border-radius:6px;background:var(--warm);color:#ffffff;transition:background .15s,color .15s;">View</button>
+      <button id="btn-whatif" onclick="setMode('whatif')" style="border:none;cursor:pointer;font-size:13px;font-weight:600;padding:6px 17px;border-radius:6px;background:transparent;color:var(--sub-text);transition:background .15s,color .15s;">What-if</button>
+    </div>
+
+    <!-- Dark / Light toggle -->
+    <button onclick="toggleDark()" style="display:flex;align-items:center;gap:7px;border:1px solid var(--border);background:transparent;cursor:pointer;font-size:12.5px;color:var(--text);padding:7px 12px;border-radius:8px;">
+      <span id="dark-dot" style="width:13px;height:13px;border-radius:50%;border:1.5px solid var(--sub-text);background:var(--warm);"></span>
+      <span id="dark-label">Light</span>
+    </button>
+  </div>
+
+  <!-- ═══ MAIN ═══ -->
+  <div style="flex:1;display:flex;min-height:0;">
+
+    <!-- LEFT: DAG -->
+    <div style="flex:1.5;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--border);">
+      <!-- DAG header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border);flex:none;">
+        <div style="font-size:13px;font-weight:650;">Task dependency graph</div>
+        <div style="display:flex;gap:15px;font-size:11.5px;color:var(--sub-text);">
+          <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--warm);"></span>Critical path</span>
+          <span style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--bar-muted);"></span>Has slack</span>
+        </div>
+      </div>
+
+      <!-- DAG canvas -->
+      <div id="dag-container" style="flex:1;overflow:auto;padding:18px;display:flex;align-items:center;justify-content:center;min-height:0;"></div>
+
+      <!-- What-if panel (hidden in view mode) -->
+      <div id="whatif-panel" style="display:none;border-top:1px solid var(--border);background:var(--panel-bg);padding:12px 16px 14px;max-height:230px;overflow:auto;flex:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;">
+          <div style="display:flex;align-items:baseline;gap:9px;">
+            <span style="font-size:12px;font-weight:650;">What-if — drag durations</span>
+            <span style="font-size:11px;color:var(--sub-text);">a longer chain can become critical</span>
+          </div>
+          <button onclick="resetDurations()" style="border:1px solid var(--border);background:transparent;cursor:pointer;font-size:11.5px;color:var(--sub-text);padding:4px 11px;border-radius:6px;">Reset</button>
+        </div>
+        <div id="sliders" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:11px 18px;"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: GANTT -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+      <!-- Gantt header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border);flex:none;">
+        <div style="font-size:13px;font-weight:650;">Schedule</div>
+        <div style="font-size:11.5px;color:var(--sub-text);">Gantt · earliest start (days)</div>
+      </div>
+      <!-- Gantt canvas -->
+      <div style="flex:1;overflow:auto;padding:18px;min-height:0;">
+        <div id="gantt-area" style="position:relative;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ FOOTER ═══ -->
+  <div style="border-top:1px solid var(--border);background:var(--panel-bg);padding:9px 22px;display:flex;align-items:center;gap:22px;font-size:11.5px;color:var(--sub-text);flex:none;flex-wrap:wrap;">
+    <span style="display:flex;align-items:center;gap:8px;">
+      <span id="verify-dot" style="width:7px;height:7px;border-radius:50%;background:var(--warm);"></span>
+      <span style="color:var(--text);font-weight:600;" id="verify-label">Verified by 2 algorithms</span>
+      <span id="verify-detail">— loading…</span>
+    </span>
+    <div style="flex:1;"></div>
+    <div style="display:flex;align-items:center;gap:9px;">
+      <span style="color:var(--text);">Topological longest-path</span>
+      <div style="width:104px;height:6px;background:var(--chip-bg);border-radius:3px;overflow:hidden;"><div id="bar-a" style="width:0%;height:100%;background:var(--warm);border-radius:3px;transition:width .3s;"></div></div>
+      <span id="time-a" style="font-family:'JetBrains Mono',monospace;width:52px;">—</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;">
+      <span style="color:var(--text);">Bellman–Ford</span>
+      <div style="width:104px;height:6px;background:var(--chip-bg);border-radius:3px;overflow:hidden;"><div id="bar-b" style="width:0%;height:100%;background:var(--bar-muted);border-radius:3px;transition:width .3s;"></div></div>
+      <span id="time-b" style="font-family:'JetBrains Mono',monospace;width:52px;">—</span>
+    </div>
+  </div>
+
+</div>
 
 <script>
-const state = { tasks: [], deps: [] };
+/* ═══════════════════════════════════════════════════════════
+   ReelPath front-end — talks to the Flask backend at /solve.
+   Core algorithms live in src/reelpath and are NOT touched.
+   ═══════════════════════════════════════════════════════════ */
 
+// ─── State ───────────────────────────────────────────────
+const APP = { tasks: [], deps: [], origDur: {}, mode: 'view', dark: true };
+let dagNaturalW = 0, dagNaturalH = 0;
+let solveTimer = null;
+
+// ─── API ─────────────────────────────────────────────────
 async function loadSample() {
-  const r = await fetch('/sample');
-  const data = await r.json();
-  state.tasks = data.tasks;
-  state.deps = data.deps;
-  buildSliders();
-  solve();
-}
-
-function buildSliders() {
-  const box = document.getElementById('sliders');
-  box.innerHTML = '';
-  for (const t of state.tasks) {
-    const row = document.createElement('div');
-    row.className = 'slider-row';
-    row.innerHTML = `
-      <div class="slider-top">
-        <span class="slider-name">${t.name} <span class="pill" id="pill-${t.id}"></span></span>
-        <span class="slider-val" id="val-${t.id}">${t.duration}</span>
-      </div>
-      <input type="range" min="1" max="20" value="${t.duration}" id="rng-${t.id}" />
-      <div class="slack-note" id="note-${t.id}"></div>`;
-    box.appendChild(row);
-    const rng = row.querySelector(`#rng-${t.id}`);
-    rng.addEventListener('input', () => {
-      t.duration = parseInt(rng.value, 10);
-      document.getElementById(`val-${t.id}`).textContent = t.duration;
-      debouncedSolve();
-    });
+  try {
+    const r = await fetch('/sample');
+    const data = await r.json();
+    APP.tasks = data.tasks;
+    APP.deps  = data.deps;
+    APP.origDur = {};
+    for (const t of data.tasks) APP.origDur[t.id] = t.duration;
+    buildSliders();
+    solve();
+  } catch (e) {
+    document.getElementById('verify-detail').textContent = '— error loading sample: ' + e.message;
   }
 }
 
-let solveTimer = null;
+async function solve() {
+  try {
+    const r = await fetch('/solve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks: APP.tasks, deps: APP.deps })
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.message || data.error);
+    render(data);
+  } catch (e) {
+    document.getElementById('verify-detail').textContent = '— error: ' + e.message;
+  }
+}
+
 function debouncedSolve() {
   clearTimeout(solveTimer);
   solveTimer = setTimeout(solve, 110);
 }
 
-async function solve() {
-  let data;
-  try {
-    const r = await fetch('/solve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tasks: state.tasks, deps: state.deps })
-    });
-    data = await r.json();
-    if (data.error) throw new Error(data.message || data.error);
-  } catch (e) {
-    document.getElementById('crosscheck-text').textContent = 'error: ' + e.message;
-    document.getElementById('crosscheck').className = 'badge bad';
-    return;
-  }
-  render(data);
+// ─── Mode & Theme toggles ───────────────────────────────
+function setMode(m) {
+  APP.mode = m;
+  const isW = m === 'whatif';
+  document.getElementById('whatif-panel').style.display = isW ? 'block' : 'none';
+  document.getElementById('btn-view').style.background  = !isW ? 'var(--warm)' : 'transparent';
+  document.getElementById('btn-view').style.color       = !isW ? '#ffffff' : 'var(--sub-text)';
+  document.getElementById('btn-whatif').style.background = isW  ? 'var(--warm)' : 'transparent';
+  document.getElementById('btn-whatif').style.color      = isW  ? '#ffffff' : 'var(--sub-text)';
+  // Re-scale DAG since vertical space changed
+  requestAnimationFrame(scaleDag);
 }
 
+function toggleDark() {
+  APP.dark = !APP.dark;
+  document.body.classList.toggle('light', !APP.dark);
+  document.getElementById('dark-label').textContent = APP.dark ? 'Light' : 'Dark';
+  document.getElementById('dark-dot').style.background = APP.dark ? 'var(--warm)' : 'transparent';
+}
+
+function resetDurations() {
+  for (const t of APP.tasks) t.duration = APP.origDur[t.id];
+  buildSliders();
+  solve();
+}
+
+// ─── Slider builder ──────────────────────────────────────
+function buildSliders() {
+  const box = document.getElementById('sliders');
+  box.innerHTML = '';
+  for (const t of APP.tasks) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">' +
+        '<span style="font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + t.name + '</span>' +
+        '<span id="sval-' + t.id + '" style="font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:600;color:var(--sub-text);">' + t.duration + 'd</span>' +
+      '</div>' +
+      '<input type="range" min="1" max="20" value="' + t.duration + '" id="srng-' + t.id + '" style="width:100%;accent-color:var(--warm);">';
+    box.appendChild(wrap);
+    const rng = wrap.querySelector('#srng-' + t.id);
+    rng.addEventListener('input', function() {
+      t.duration = parseInt(rng.value, 10);
+      document.getElementById('sval-' + t.id).textContent = t.duration + 'd';
+      debouncedSolve();
+    });
+  }
+}
+
+// ─── Main render ─────────────────────────────────────────
 function render(data) {
+  // Makespan header
   document.getElementById('makespan').textContent = data.makespan;
 
+  // Footer verification
   const ok = data.crosscheck_ok;
-  const badge = document.getElementById('crosscheck');
-  badge.className = 'badge ' + (ok ? 'ok' : 'bad');
-  document.getElementById('crosscheck-text').textContent =
-    ok ? 'A = B verified' : 'A ≠ B mismatch!';
+  document.getElementById('verify-detail').textContent =
+    ok ? ('\u2009— both agree, makespan = ' + data.makespan + '.')
+       : '\u2009— MISMATCH!';
 
-  document.getElementById('a-ms').textContent = data.timing.A_ms.toFixed(3);
-  document.getElementById('b-ms').textContent = data.timing.B_ms.toFixed(3);
-  document.getElementById('cross-foot').textContent = ok ? '✓ identical' : '✗ differ';
-  document.getElementById('cross-foot').className = ok ? 'algo-a' : 'err';
+  // Footer timing bars
+  const aMs = data.timing.A_ms, bMs = data.timing.B_ms;
+  const maxMs = Math.max(aMs, bMs, 0.001);
+  document.getElementById('bar-a').style.width = (aMs / maxMs * 100).toFixed(1) + '%';
+  document.getElementById('bar-b').style.width = (bMs / maxMs * 100).toFixed(1) + '%';
+  document.getElementById('time-a').textContent = aMs.toFixed(1) + ' ms';
+  document.getElementById('time-b').textContent = bMs.toFixed(1) + ' ms';
 
+  // Build lookup tables
   const sched = {};
   for (const row of data.schedule) sched[row.id] = row;
   const critical = new Set(data.critical_ids);
 
-  // Update slider pills + slack notes.
-  for (const t of state.tasks) {
-    const row = sched[t.id];
-    const pill = document.getElementById(`pill-${t.id}`);
-    const note = document.getElementById(`note-${t.id}`);
-    if (critical.has(t.id)) {
-      pill.className = 'pill crit'; pill.textContent = 'CRITICAL';
-      note.textContent = `ES ${row.es} · EF ${row.ef} · no slack`;
-    } else {
-      pill.className = 'pill slack'; pill.textContent = 'slack ' + row.slack;
-      note.textContent = `ES ${row.es} · EF ${row.ef} · can slip ${row.slack}d`;
-    }
+  // Update slider value colors
+  for (const t of APP.tasks) {
+    const el = document.getElementById('sval-' + t.id);
+    if (el) el.style.color = critical.has(t.id) ? 'var(--warm)' : 'var(--sub-text)';
   }
 
   renderDAG(data, sched, critical);
   renderGantt(data, sched, critical);
 }
 
+// ─── DAG rendering ───────────────────────────────────────
 function computeRanks() {
-  // Longest dependency depth per task -> DAG column.
   const preds = {};
-  for (const t of state.tasks) preds[t.id] = [];
-  for (const [i, j] of state.deps) preds[j].push(i);
+  for (const t of APP.tasks) preds[t.id] = [];
+  for (const [i, j] of APP.deps) preds[j].push(i);
   const rank = {};
-  const visiting = {};
   function depth(id) {
     if (rank[id] !== undefined) return rank[id];
-    visiting[id] = true;
     let r = 0;
     for (const p of preds[id]) r = Math.max(r, depth(p) + 1);
-    rank[id] = r; return r;
+    rank[id] = r;
+    return r;
   }
-  for (const t of state.tasks) depth(t.id);
+  for (const t of APP.tasks) depth(t.id);
   return rank;
 }
 
 function renderDAG(data, sched, critical) {
+  const container = document.getElementById('dag-container');
   const rank = computeRanks();
+
+  // Group tasks into columns
   const cols = {};
   let maxCol = 0;
-  for (const t of state.tasks) {
+  for (const t of APP.tasks) {
     const c = rank[t.id];
     (cols[c] = cols[c] || []).push(t);
     maxCol = Math.max(maxCol, c);
   }
-  const NW = 132, NH = 46, GX = 56, GY = 26;
+
+  // Layout constants (matching design proportions)
+  const NW = 100, NH = 50, GX = 16, GY = 28, PAD = 10;
   let maxRows = 0;
   for (const c in cols) maxRows = Math.max(maxRows, cols[c].length);
-  const W = (maxCol + 1) * (NW + GX) + GX;
-  const H = maxRows * (NH + GY) + GY;
+  const W = PAD * 2 + (maxCol + 1) * NW + maxCol * GX;
+  const H = Math.max(350, maxRows * NH + (maxRows - 1) * GY + 80);
 
+  // Compute node positions
   const pos = {};
   for (let c = 0; c <= maxCol; c++) {
     const list = cols[c] || [];
-    const colH = list.length * (NH + GY);
-    const offset = (H - colH) / 2;
-    list.forEach((t, i) => {
-      pos[t.id] = { x: GX + c * (NW + GX), y: offset + i * (NH + GY) };
+    const colH = list.length * NH + (list.length - 1) * GY;
+    const yOff = (H - colH) / 2;
+    list.forEach(function(t, i) {
+      pos[t.id] = { x: PAD + c * (NW + GX), y: yOff + i * (NH + GY) };
     });
   }
 
-  const onCritPath = new Set(data.critical_path);
-  let edges = '';
-  for (const [i, j] of state.deps) {
-    const a = pos[i], b = pos[j];
+  const onCritPath = new Set(data.critical_path || []);
+
+  // ── Build edges SVG ──
+  var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="position:absolute;left:0;top:0;overflow:visible;">';
+  svg += '<defs><marker id="rp-arrow" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">';
+  svg += '<path d="M0.6,0.6 L6,3 L0.6,5.4" fill="none" stroke="context-stroke" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
+  svg += '</marker></defs>';
+
+  for (const [f, t] of APP.deps) {
+    const a = pos[f], b = pos[t];
     if (!a || !b) continue;
-    const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
-    const mx = (x1 + x2) / 2;
-    const critEdge = onCritPath.has(i) && onCritPath.has(j) &&
-                     critical.has(i) && critical.has(j);
-    edges += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
-      fill="none" stroke="${critEdge ? 'var(--crit)' : '#39414f'}"
-      stroke-width="${critEdge ? 2.6 : 1.4}" opacity="${critEdge ? 0.95 : 0.5}" />`;
+    var sx = a.x + NW, sy = a.y + NH / 2;
+    var tx = b.x - 3,  ty = b.y + NH / 2;
+    var dx = Math.max(26, (tx - sx) * 0.5);
+    var d  = 'M ' + sx + ' ' + sy + ' C ' + (sx + dx) + ' ' + sy + ' ' + (tx - dx) + ' ' + ty + ' ' + tx + ' ' + ty;
+    var critEdge = onCritPath.has(f) && onCritPath.has(t) && critical.has(f) && critical.has(t);
+    svg += '<path d="' + d + '" fill="none" stroke="' + (critEdge ? 'var(--warm)' : 'var(--edge)') + '" stroke-width="' + (critEdge ? 2.5 : 1.4) + '" marker-end="url(#rp-arrow)" style="transition:stroke .2s,stroke-width .2s;"/>';
+  }
+  svg += '</svg>';
+
+  // ── Build node divs ──
+  var nodes = '';
+  for (const t of APP.tasks) {
+    var p = pos[t.id];
+    if (!p) continue;
+    var cr = critical.has(t.id);
+    var bg      = cr ? 'var(--warm-soft)' : 'var(--card-bg)';
+    var bd      = cr ? 'var(--warm-border)' : 'var(--border)';
+    var sub     = cr ? 'var(--warm)' : 'var(--sub-text)';
+    var chipBg  = cr ? 'var(--warm)' : 'var(--chip-bg)';
+    var chipFg  = cr ? '#ffffff' : 'var(--sub-text)';
+    var dur     = t.duration;
+
+    nodes += '<div style="position:absolute;left:' + p.x + 'px;top:' + p.y + 'px;width:100px;height:50px;'
+      + 'background:' + bg + ';border:1.5px solid ' + bd + ';border-radius:10px;'
+      + 'padding:7px 9px;display:flex;flex-direction:column;justify-content:space-between;'
+      + 'box-shadow:0 1px 2px rgba(0,0,0,.05);transition:background .2s,border-color .2s;">'
+      + '<div style="font-size:11.5px;font-weight:600;line-height:1.15;color:var(--text);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + t.name + '</div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+        + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9.5px;color:' + sub + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42px;">#' + t.id + '</span>'
+        + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;background:' + chipBg + ';color:' + chipFg + ';padding:1px 6px;border-radius:5px;flex:none;">' + dur + 'd</span>'
+      + '</div>'
+    + '</div>';
   }
 
-  let nodes = '';
-  for (const t of state.tasks) {
-    const p = pos[t.id];
-    const crit = critical.has(t.id);
-    const fill = crit ? 'var(--crit)' : 'var(--panel-2)';
-    const stroke = crit ? '#ffce6e' : 'var(--border)';
-    const textFill = crit ? '#1a1205' : 'var(--text)';
-    const durFill = crit ? '#5a3d05' : 'var(--muted)';
-    const glow = crit ? 'filter="url(#glow)"' : '';
-    nodes += `<g ${glow}>
-      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="11"
-        fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
-      <text class="node-label" x="${p.x + 12}" y="${p.y + 20}" fill="${textFill}">${t.name}</text>
-      <text class="node-dur" x="${p.x + 12}" y="${p.y + 36}" fill="${durFill}">d = ${t.duration}d</text>
-    </g>`;
-  }
-
-  const svg = document.getElementById('dag');
-  svg.setAttribute('width', Math.max(W, 320));
-  svg.setAttribute('height', Math.max(H, 120));
-  svg.innerHTML = `
-    <defs>
-      <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-        <feGaussianBlur stdDeviation="3.5" result="b"/>
-        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>${edges}${nodes}`;
+  // ── Assemble ──
+  dagNaturalW = W;
+  dagNaturalH = H;
+  container.innerHTML =
+    '<div id="dag-board" style="flex:none;position:relative;">' +
+      '<div id="dag-inner" style="position:absolute;top:0;left:0;width:' + W + 'px;height:' + H + 'px;transform-origin:top left;">' +
+        svg + nodes +
+      '</div>' +
+    '</div>';
+  scaleDag();
 }
 
+function scaleDag() {
+  var container = document.getElementById('dag-container');
+  var board = document.getElementById('dag-board');
+  var inner = document.getElementById('dag-inner');
+  if (!container || !board || !inner || !dagNaturalW) return;
+  var availW = container.clientWidth - 36;
+  var availH = container.clientHeight - 36;
+  var scaleW = availW / dagNaturalW;
+  var scaleH = availH / dagNaturalH;
+  var s = Math.max(0.35, Math.min(1, Math.min(scaleW, scaleH)));
+  board.style.width  = Math.round(dagNaturalW * s) + 'px';
+  board.style.height = Math.round(dagNaturalH * s) + 'px';
+  inner.style.transform = 'scale(' + s + ')';
+}
+
+// ─── Gantt rendering ─────────────────────────────────────
 function renderGantt(data, sched, critical) {
-  const box = document.getElementById('gantt');
-  box.innerHTML = '';
-  const M = data.makespan || 1;
-  const rows = [...data.schedule].sort((a, b) => a.es - b.es || a.ef - b.ef);
-  for (const row of rows) {
-    const crit = critical.has(row.id);
-    const el = document.createElement('div');
-    el.className = 'gantt-row';
-    const left = (row.es / M) * 100;
-    const width = ((row.ef - row.es) / M) * 100;
-    const slackW = ((row.lf - row.ef) / M) * 100;
-    el.innerHTML = `
-      <div class="gantt-label" title="${row.name}">${row.name}</div>
-      <div class="gantt-track">
-        <div class="gantt-bar ${crit ? 'crit' : 'normal'}" style="left:${left}%;width:${Math.max(width,1.2)}%"
-             title="ES ${row.es} → EF ${row.ef}, slack ${row.slack}"></div>
-        ${slackW > 0.4 ? `<div class="gantt-slack" style="left:${left + width}%;width:${slackW}%"></div>` : ''}
-      </div>`;
-    box.appendChild(el);
+  var area = document.getElementById('gantt-area');
+  var M = data.makespan || 1;
+  var maxDays = Math.max(M + 2, 18);
+  // Round up to next even number for nicer ticks
+  if (maxDays % 2 !== 0) maxDays++;
+
+  var html = '';
+
+  // Tick labels row
+  html += '<div style="display:grid;grid-template-columns:118px 1fr;margin-bottom:9px;">';
+  html += '<div></div><div style="position:relative;height:14px;">';
+  for (var d = 0; d <= maxDays; d += 2) {
+    var pct = (d / maxDays * 100).toFixed(2);
+    html += '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-family:\'JetBrains Mono\',monospace;font-size:9.5px;color:var(--sub-text);">' + d + '</span>';
   }
-  document.getElementById('axis-mid').textContent = Math.round(M / 2);
-  document.getElementById('axis-end').textContent = M;
+  html += '</div></div>';
+
+  // Grid lines (first layer, behind bars)
+  html += '<div style="position:absolute;top:14px;bottom:0;left:118px;right:0;pointer-events:none;">';
+  for (var d = 0; d <= maxDays; d += 2) {
+    var pct = (d / maxDays * 100).toFixed(2);
+    html += '<div style="position:absolute;top:9px;bottom:0;left:' + pct + '%;width:0;border-left:1px solid var(--grid-line);"></div>';
+  }
+  html += '</div>';
+
+  // Task rows (stable order matching APP.tasks)
+  const orderMap = {};
+  APP.tasks.forEach(function(t, idx) { orderMap[t.id] = idx; });
+  var rows = data.schedule.slice().sort(function(a, b) {
+    return (orderMap[a.id] ?? 0) - (orderMap[b.id] ?? 0);
+  });
+  for (var ri = 0; ri < rows.length; ri++) {
+    var row = rows[ri];
+    var crit = critical.has(row.id);
+    var barLeft  = (row.es / maxDays * 100).toFixed(2);
+    var barW     = ((row.ef - row.es) / maxDays * 100).toFixed(2);
+    var slackLeft = (row.ef / maxDays * 100).toFixed(2);
+    var slackW    = ((row.lf - row.ef) / maxDays * 100).toFixed(2);
+    var barColor = crit ? 'var(--warm)' : 'var(--bar-muted)';
+
+    html += '<div style="display:grid;grid-template-columns:118px 1fr;align-items:center;height:31px;">';
+    html += '<div style="font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;">' + row.name + '</div>';
+    html += '<div style="position:relative;height:19px;">';
+    html += '<div style="position:absolute;top:0;left:' + barLeft + '%;width:' + Math.max(parseFloat(barW), 1.2) + '%;height:19px;background:' + barColor + ';border-radius:5px;transition:left .2s,width .2s,background .2s;"></div>';
+    if (parseFloat(slackW) > 0.4) {
+      html += '<div style="position:absolute;top:0;left:' + slackLeft + '%;width:' + slackW + '%;height:19px;border-radius:5px;border:1px solid var(--border);background:repeating-linear-gradient(45deg,transparent,transparent 3px,var(--hatch) 3px,var(--hatch) 4.2px);transition:left .2s,width .2s;"></div>';
+    }
+    html += '</div></div>';
+  }
+
+  // Makespan marker
+  var markerPct = (M / maxDays * 100).toFixed(2);
+  html += '<div style="position:absolute;top:14px;bottom:0;left:118px;right:0;pointer-events:none;">';
+  html += '<div style="position:absolute;top:9px;bottom:0;left:' + markerPct + '%;width:0;border-left:1.5px dashed var(--warm);"></div>';
+  html += '<div style="position:absolute;top:-2px;left:' + markerPct + '%;transform:translateX(-50%);background:var(--warm);color:#fff;font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:600;padding:1px 6px;border-radius:4px;white-space:nowrap;">' + M + 'd</div>';
+  html += '</div>';
+
+  area.innerHTML = html;
 }
 
+// ─── Init ────────────────────────────────────────────────
 loadSample();
+new ResizeObserver(scaleDag).observe(document.getElementById('dag-container'));
 </script>
 </body>
 </html>
